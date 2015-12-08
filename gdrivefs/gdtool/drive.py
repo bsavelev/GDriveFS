@@ -345,7 +345,10 @@ class _GdriveManager(object):
             _logger.debug('Found in cache')
             return content
         http = self.__auth.get_authed_http()
-        headers = {'Range': "bytes=%s-%s" % get_range(offset, size)}
+        headers = {
+            'Accept-Encoding': 'gzip',
+            'Range': "bytes=%s-%s" % get_range(offset, size)
+        }
         _logger.debug('RANGE: Range header: %s' % headers['Range'])
         resp, content = http.request(
             url,
