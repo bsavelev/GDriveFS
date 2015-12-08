@@ -174,13 +174,7 @@ class OpenedFile(object):
     """This class describes a single open file, and manages changes."""
 
     def __init__(self, entry_id, path, filename, is_hidden, mime_type):
-# TODO(dustin): Until we can gracely orchestrate concurrent handles on the same 
-#               entry, we can't allow it. This is referenced, just below.
         with _OPENED_ENTRIES_LOCK:
-            assert entry_id not in _OPENED_ENTRIES, \
-                   "Access to the same file from multiple file-handles is "\
-                   "not currently supported."
-
             _OPENED_ENTRIES.add(entry_id)
 
         _logger.info("Opened-file object created for entry-ID [%s] and path "
@@ -211,7 +205,7 @@ class OpenedFile(object):
 #               we'll just have to accept the fact that concurrent access will 
 #               require multiple downloads of the same file to multiple 
 #               temporary files (one for each).
-        self.__load_base_from_remote()
+        #self.__load_base_from_remote()
 
     def __del__(self):
         """This handle is being closed. Notice that we don't flush here because 
@@ -243,6 +237,24 @@ class OpenedFile(object):
 #
 #       We should also make sure to remove temporary file-paths in the OM temp-
 #       path (if one exists) if we get a "delete" change.
+
+    def get_entry(self):
+        entry = self.__cache.get(self.__entry_id)
+        if not entry:
+            gd = get_gdrive()
+            entry = gd.get_entry(self.__entry_id)
+        return entry
+
+    def get_downloadUrl(self):
+        entry = self.get_entry()
+        url = entry.download_links.values()[0]
+        url = '%s&acknowledgeAbuse=true&alt=media' % url
+        return url
+
+    @dec_hint(['offset', 'length'], prefix='OF')
+    def read_range(self, offset, size):
+        gd = get_gdrive()
+        return gd.read_entry(self.__entry_id, self.get_downloadUrl(), self.get_entry().file_size, offset, size)
 
     def __load_base_from_remote(self):
         """Download the data for the entry that we represent. This is probably 

@@ -1,3 +1,4 @@
+import os
 import logging
 import re
 import dateutil.parser
@@ -23,6 +24,7 @@ from dateutil.tz import tzlocal, tzutc
 
 import gdrivefs.config
 import gdrivefs.gdtool.chunked_download
+from gdrivefs.gdtool.blockcache import BlockCache
 
 from gdrivefs.errors import AuthorizationFaultError, MustIgnoreFileError, \
                             FilenameQuantityError, ExportFormatError
@@ -322,6 +324,38 @@ class _GdriveManager(object):
         self.__assert_response_kind(response, 'drive#file')
 
         return NormalEntry('direct_read', response)
+
+    @_marshall
+    def read_entry(self, entry_id, url, full_size, offset, size):
+        def get_range(offset, size):
+            if size < 0:
+                end = full_size - 1
+            else:
+                end = offset + size - 1
+            if end > full_size:
+                end = full_size - 1
+            return offset, end
+        _logger.debug('RANGE: full_size: %s' % full_size)
+        _logger.debug('RANGE: offset: %s' % offset)
+        _logger.debug('RANGE: size: %s' % size)
+        _logger.debug('RANGE: url: %s' % url)
+        cache = BlockCache(entry_id, offset, size)
+        content = cache.get()
+        if content:
+            _logger.debug('Found in cache')
+            return content
+        http = self.__auth.get_authed_http()
+        headers = {'Range': "bytes=%s-%s" % get_range(offset, size)}
+        _logger.debug('RANGE: Range header: %s' % headers['Range'])
+        resp, content = http.request(
+            url,
+            headers=headers
+        )
+        content_len = len(content)
+        if content_len != size:
+            _logger.warning('RANGE: content len (%s) not equal to requested size' % content_len)
+        cache.set(content)
+        return content
 
     @_marshall
     def list_files(self, query_contains_string=None, query_is_string=None, 

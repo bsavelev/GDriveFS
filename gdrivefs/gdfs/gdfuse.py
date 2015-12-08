@@ -239,7 +239,7 @@ class _GdfsMixin(object):
             raise FuseOSError(EIO)
 
         try:
-            return opened_file.read(offset, length)
+            return opened_file.read_range(offset, length)
         except:
             _logger.exception("Could not read data.")
             raise FuseOSError(EIO)
